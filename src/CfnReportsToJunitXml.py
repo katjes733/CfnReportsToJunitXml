@@ -20,7 +20,7 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-import argparse, json, sys, re
+import argparse, json, sys, re, pathlib
 sys.path.insert(0, "external")
 from junit_xml import TestSuite, TestCase
 from os import walk
@@ -32,7 +32,7 @@ def xml_filename_regex(arg_value, pat=re.compile(r"(?i)^[\w-]*\.xml$")):
 
 parser = argparse.ArgumentParser()
 parser.add_argument('report', help='The file name of the scan report')
-parser.add_argument('reportType', choices=['CFN-NAG', """ 'CFN-GUARD', """ 'CFN-LINT'], help='The report type to use as conversion basis')
+parser.add_argument('reportType', choices=['CFN-NAG', 'CFN-GUARD', 'CFN-LINT'], help='The report type to use as conversion basis')
 parser.add_argument('output', type=xml_filename_regex, help='The output xml file name of the generated JSON configuration')
 parser.add_argument('--rules', help='The file name of the rules file')
 parser.add_argument('--pathToTemplates', help='The path to the CloudFormation templates')
@@ -90,7 +90,7 @@ def generate_junit_report_from_cfn_lint():
 
     for finding in lintReport:
         type = "FAIL" if finding['Level'] == 'Error' else "WARN"
-        filename = finding['Filename'].replace('\\','/')
+        filename = pathlib.PureWindowsPath(finding['Filename']).as_posix()
         id = finding['Rule']['Id']
         logical_resource_id = finding['Location']['Path'][1]
         line_number = finding['Location']['Start']['LineNumber']
@@ -143,8 +143,9 @@ def process_report():
         return generate_junit_report_from_cfn_nag()
     if args.reportType == 'CFN-LINT':            
         return generate_junit_report_from_cfn_lint()
-    elif args.reportType == 'CFN-GUARD':            
-        return generate_junit_report_from_cfn_guard()
+    # CFN-GUARD is not yet supported
+    # elif args.reportType == 'CFN-GUARD':            
+    #     return generate_junit_report_from_cfn_guard()
     else:
         print(f"Not yet supported report type: {args.reportType}")
 
