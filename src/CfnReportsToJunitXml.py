@@ -92,7 +92,7 @@ def generate_junit_report_from_cfn_lint():
         type = "FAIL" if finding['Level'] == 'Error' else "WARN"
         filename = pathlib.PureWindowsPath(finding['Filename']).as_posix()
         id = finding['Rule']['Id']
-        logical_resource_id = finding['Location']['Path'][1]
+        logical_resource_id = finding['Location']['Path'][1] if finding['Location']['Path'] else "NA"
         line_number = finding['Location']['Start']['LineNumber']
         file = [f for f in report if f['filename'] == filename ]
         if file:
