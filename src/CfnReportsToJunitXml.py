@@ -73,11 +73,12 @@ def generate_junit_report_from_cfn_nag():
 def generate_junit_report_from_cfn_lint():
     pattern =  re.compile(r"^(?P<id>[EW]{1}\d+)\: (?P<message>.*)$")
     rules = []
+    rules.append({"id": "E0000", "type": "FAIL", "message": "Parsing error found when parsing the template"})
     with open(args.rules, 'r') as stream:
         for line in stream:  
             match = pattern.match(line)     
             if match:
-                rules.append({"id": match.group('id'), "type": "FAIL" if match.group('id').startswith('E') else "WARN", "message": match.group('id')})
+                rules.append({"id": match.group('id'), "type": "FAIL" if match.group('id').startswith('E') else "WARN", "message": match.group('message')})
 
     reportFile = open(args.report, 'r')
     lintReport = json.load(reportFile)
