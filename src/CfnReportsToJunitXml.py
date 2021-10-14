@@ -20,7 +20,7 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-import argparse, json, sys, re, pathlib
+import argparse, json, sys, re, pathlib, bisect
 sys.path.insert(0, "external")
 from junit_xml import TestSuite, TestCase
 from os import walk
@@ -50,7 +50,12 @@ def write_junit_xml_report(rules, report):
             test_case=TestCase(f"{rule['id']} - {file_findings['filename']}")
             violations = [v for v in file_findings["file_results"]['violations'] if v['id'] == rule['id']] 
             if violations:
-                output=",\n".join(list(map(lambda x, y: f"Line {x} ({y})", violations[0]['line_numbers'], violations[0]['logical_resource_ids'])))
+                # TODO
+                print(f"Violations: {violations}")
+                if 'detailMessages' in violations[0]:
+                    output=",\n".join(list(map(lambda x, y, z: f"Line {x} ({y}): {z}", violations[0]['line_numbers'], violations[0]['logical_resource_ids'], violations[0]['detailMessages'])))
+                else:
+                    output=",\n".join(list(map(lambda x, y: f"Line {x} ({y})", violations[0]['line_numbers'], violations[0]['logical_resource_ids'])))
                 test_case.add_failure_info(output=f"{output}", message=violations[0]['message'])
             test_cases.append(test_case)
 
@@ -70,8 +75,18 @@ def generate_junit_report_from_cfn_nag():
 
     write_junit_xml_report(rules, report)
 
+def insert_rule(rules, id, type, message):
+    returnValue = rules    
+    for index, value in enumerate(returnValue):
+        if value['id'] == id:
+            break
+        elif value['id'] > id:
+            returnValue.insert(index, {"id": id, "type": type, "message": message})
+            break
+    return returnValue
+
 def generate_junit_report_from_cfn_lint():
-    pattern =  re.compile(r"^(?P<id>[EW]{1}\d+)\: (?P<message>.*)$")
+    pattern = re.compile(r"^(?P<id>[EW]{1}\d+)\: (?P<message>.*)$")
     rules = []
     rules.append({"id": "E0000", "type": "FAIL", "message": "Parsing error found when parsing the template"})
     with open(args.rules, 'r') as stream:
@@ -93,7 +108,15 @@ def generate_junit_report_from_cfn_lint():
         type = "FAIL" if finding['Level'] == 'Error' else "WARN"
         filename = pathlib.PureWindowsPath(finding['Filename']).as_posix()
         id = finding['Rule']['Id']
-        logical_resource_id = finding['Location']['Path'][1] if finding['Location']['Path'] else "NA"
+        message = finding['Rule']['ShortDescription']
+        detailMessage = re.sub(r"\s+\(line\s\d+\)",'',finding['Message'])
+        rPattern = re.compile(r"^.*\"(?P<resourceId>[\w-]*)\".*$")
+        if finding['Location']['Path']:
+            logical_resource_id = finding['Location']['Path'][1]
+        else:
+            match = rPattern.match(detailMessage)
+            print(f"detailMessage: {detailMessage}, match: {match}")
+            logical_resource_id = match.group('resourceId') if match else "NA"
         line_number = finding['Location']['Start']['LineNumber']
         file = [f for f in report if f['filename'] == filename ]
         if file:
@@ -104,15 +127,18 @@ def generate_junit_report_from_cfn_lint():
                 print(f"Violation {violation[0]['id']} already exists; adding details to violation")
                 violation[0]['logical_resource_ids'].append(logical_resource_id)
                 violation[0]['line_numbers'].append(line_number)
+                violation[0]['detailMessages'].append(detailMessage)
             else:
                 print(f"Violation for Rule {id} does not yet exist; adding new violation")
                 file[0]['file_results']['failure_count'] += 1
-                violations.append({"id": id, "type": type, "message": finding['Rule']['ShortDescription'],"logical_resource_ids": [logical_resource_id], "line_numbers": [line_number]})
+                violations.append({"id": id, "type": type, "message": message, "detailMessages": [detailMessage], "logical_resource_ids": [logical_resource_id], "line_numbers": [line_number]})
+                insert_rule(rules, id, type, message)
         else:
             print(f"Filename {filename} does not yet exist; adding violation as first to new record")            
             report.append({
                 "filename": filename,
-                "file_results": {"failure_count": 1, "violations": [{"id": id, "type": type, "message": finding['Rule']['ShortDescription'],"logical_resource_ids": [logical_resource_id], "line_numbers": [line_number]}]}})
+                "file_results": {"failure_count": 1, "violations": [{"id": id, "type": type, "message": message, "detailMessages": [detailMessage], "logical_resource_ids": [logical_resource_id], "line_numbers": [line_number]}]}})
+            insert_rule(rules, id, type, message)
 
     write_junit_xml_report(rules, report)
 
