@@ -24,3 +24,14 @@ cfn-lint --list-rules > cfn_lint_rules.txt
 Scan the templates
 ```bash
 cfn-lint %PATH_TO_TEMPLATES%/*.yml --format json > cfn_lint_result.json
+```
+
+## Parameters
+| Parameter | Description | Mandatory | Allowed values |
+| --- | --- | --- | --- |
+| report | The file name of the scan report | yes | Any valid scan report file name |
+| reportType | The report type to use as conversion basis | yes | CFN-NAG, CFN-LINT |
+| output | The output xml file name of the generated JSON configuration | yes | Must be valid filename ending on .xml |
+| rules | The file name of the rules file | yes, for reportType CFN-LINT and CFN-NAG | Any valid rules file name |
+| pathToTemplates | The path to the CloudFormation templates | yes, for reportType CFN-LINT | Any valid path |
+| logLevel | A valid log level. If none provided, info is used | no | critical, error, warn, warning, info ,debug |
