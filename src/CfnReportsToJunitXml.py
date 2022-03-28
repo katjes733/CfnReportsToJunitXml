@@ -20,10 +20,10 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-import argparse, json, sys, re, pathlib, logging, os
-sys.path.insert(0, "external")
+import argparse, json, sys, re, pathlib, logging
 from junit_xml import TestSuite, TestCase
 from os import walk
+sys.path.insert(0, "external")
 
 def xml_filename_regex(arg_value, pat=re.compile(r"(?i)^[\w-]*\.xml$")):
     if not pat.match(arg_value):
@@ -62,7 +62,7 @@ def write_junit_xml_report(rules, report):
     for file_findings in report:
         for rule in rules:
             test_case=TestCase(f"{rule['id']} - {file_findings['filename']}")
-            violations = [v for v in file_findings["file_results"]['violations'] if v['id'] == rule['id']] 
+            violations = [v for v in file_findings["file_results"]['violations'] if v['id'] == rule['id']]
             if violations:
                 if 'detailMessages' in violations[0]:
                     output=",\n".join(list(map(lambda x, y, z: f"Line {x} ({y}): {z}", violations[0]['line_numbers'], violations[0]['logical_resource_ids'], violations[0]['detailMessages'])))
@@ -72,28 +72,30 @@ def write_junit_xml_report(rules, report):
             test_cases.append(test_case)
 
     test_suite = TestSuite(f"{args.reportType} test suite", test_cases)
-    junitReportFile = open(args.output, 'w')
+    junitReportFile = open(args.output, 'w', encoding='utf8')
     junitReportFile.write(TestSuite.to_xml_string([test_suite], prettyprint=True))
     junitReportFile.close()
 
-def generate_junit_report_from_cfn_nag():    
-    rulesFile = open(args.rules, 'r')
+def generate_junit_report_from_cfn_nag():
+    rulesFile = open(args.rules, 'r', encoding='utf8')
     rules = json.load(rulesFile)
     rulesFile.close()
 
-    reportFile = open(args.report, 'r')
+    rules.insert(0, {"id": "FATAL", "type": "FAIL", "message": "Parsing error found when parsing the template"})
+
+    reportFile = open(args.report, 'r', encoding='utf8')
     report = json.load(reportFile)
     reportFile.close()
 
     write_junit_xml_report(rules, report)
 
-def insert_rule(rules, id, type, message):
-    returnValue = rules    
+def insert_rule(rules, _id, _type, message):
+    returnValue = rules
     for index, value in enumerate(returnValue):
-        if value['id'] == id:
+        if value['id'] == _id:
             break
-        elif value['id'] > id:
-            returnValue.insert(index, {"id": id, "type": type, "message": message})
+        elif value['id'] > _id:
+            returnValue.insert(index, {"id": _id, "type": _type, "message": message})
             break
     return returnValue
 
@@ -102,13 +104,13 @@ def generate_junit_report_from_cfn_lint():
     rules = []
     # This rule is not part of the rules file, but it is a commonly tested for rule and is therefore hardcoded
     rules.append({"id": "E0000", "type": "FAIL", "message": "Parsing error found when parsing the template"})
-    with open(args.rules, 'r') as stream:
-        for line in stream:  
-            match = pattern.match(line)     
+    with open(args.rules, 'r', encoding='utf8') as stream:
+        for line in stream:
+            match = pattern.match(line)
             if match:
                 rules.append({"id": match.group('id'), "type": "FAIL" if match.group('id').startswith('E') else "WARN", "message": match.group('message')})
 
-    reportFile = open(args.report, 'r')
+    reportFile = open(args.report, 'r', encoding='utf8')
     lintReport = json.load(reportFile)
     reportFile.close()
 
@@ -118,9 +120,9 @@ def generate_junit_report_from_cfn_lint():
         report.append({"filename": f"{args.pathToTemplates}/{template}", "file_results": {"failure_count": 0, "violations": []}})
 
     for finding in lintReport:
-        type = "FAIL" if finding['Level'] == 'Error' else "WARN"
+        _type = "FAIL" if finding['Level'] == 'Error' else "WARN"
         filename = pathlib.PureWindowsPath(finding['Filename']).as_posix()
-        id = finding['Rule']['Id']
+        _id = finding['Rule']['Id']
         message = finding['Rule']['ShortDescription']
         detailMessage = re.sub(r"\s+\(line\s\d+\)",'',finding['Message'])
         rPattern = re.compile(r"^.*\"(?P<resourceId>[\w-]*)\".*$")
@@ -132,25 +134,25 @@ def generate_junit_report_from_cfn_lint():
         line_number = finding['Location']['Start']['LineNumber']
         file = [f for f in report if f['filename'] == filename ]
         if file:
-            logger.debug(f"Filename {filename} already exists; adding violation")
-            violations = file[0]['file_results']['violations'] 
-            violation = [v for v in violations if v['id'] == id]
+            logger.debug("Filename %s already exists; adding violation", filename)
+            violations = file[0]['file_results']['violations']
+            violation = [v for v in violations if v['id'] == _id]
             if violation:
-                logger.debug(f"Violation {violation[0]['id']} already exists; adding details to violation")
+                logger.debug("Violation %s already exists; adding details to violation", violation[0]['id'])
                 violation[0]['logical_resource_ids'].append(logical_resource_id)
                 violation[0]['line_numbers'].append(line_number)
                 violation[0]['detailMessages'].append(detailMessage)
             else:
-                logger.debug(f"Violation for Rule {id} does not yet exist; adding new violation")
+                logger.debug("Violation for Rule %s does not yet exist; adding new violation", _id)
                 file[0]['file_results']['failure_count'] += 1
-                violations.append({"id": id, "type": type, "message": message, "detailMessages": [detailMessage], "logical_resource_ids": [logical_resource_id], "line_numbers": [line_number]})
-                insert_rule(rules, id, type, message)
+                violations.append({"id": _id, "type": _type, "message": message, "detailMessages": [detailMessage], "logical_resource_ids": [logical_resource_id], "line_numbers": [line_number]})
+                insert_rule(rules, _id, _type, message)
         else:
-            logger.debug(f"Filename {filename} does not yet exist; adding violation as first to new record")            
+            logger.debug("Filename %s does not yet exist; adding violation as first to new record", filename)
             report.append({
                 "filename": filename,
-                "file_results": {"failure_count": 1, "violations": [{"id": id, "type": type, "message": message, "detailMessages": [detailMessage], "logical_resource_ids": [logical_resource_id], "line_numbers": [line_number]}]}})
-            insert_rule(rules, id, type, message)
+                "file_results": {"failure_count": 1, "violations": [{"id": _id, "type": type, "message": message, "detailMessages": [detailMessage], "logical_resource_ids": [logical_resource_id], "line_numbers": [line_number]}]}})
+            insert_rule(rules, _id, type, message)
 
     write_junit_xml_report(rules, report)
 
@@ -158,40 +160,40 @@ def generate_junit_report_from_cfn_lint():
 def generate_junit_report_from_cfn_guard():
     test_cases = []
     count_id = 0
-    reportFile = open(args.report, 'r')
+    reportFile = open(args.report, 'r', encoding='utf8')
     report = json.load(reportFile)
     reportFile.close()
     for file_findings in report:
         finding = file_findings["message"]
         # extract resource id from finding line
-        resource_regex = re.search("^\[([^]]*)]", finding)
+        resource_regex = re.search(r"^\[([^]]*)]", finding)
         if resource_regex:
             resource_id = resource_regex.group(1)
             test_case = TestCase(f"{count_id} - {finding}", classname=resource_id)
-            test_case.add_failure_info(output="%s#R:%s" % (file_findings["file"], resource_id))
+            test_case.add_failure_info(output=f"%s#R:{resource_id}" % (file_findings["file"]))
             test_cases.append(test_case)
             count_id += 1
 
     test_suite = TestSuite(f"{args.reportType} test suite", test_cases)
-    junitReportFile = open(args.output, 'w')
+    junitReportFile = open(args.output, 'w', encoding='utf8')
     junitReportFile.write(TestSuite.to_xml_string([test_suite], prettyprint=True))
     junitReportFile.close()
 
 def process_report():
-    if args.reportType == 'CFN-NAG':            
+    if args.reportType == 'CFN-NAG':
         return generate_junit_report_from_cfn_nag()
-    if args.reportType == 'CFN-LINT':            
+    if args.reportType == 'CFN-LINT':
         return generate_junit_report_from_cfn_lint()
     # CFN-GUARD is not yet supported
-    # elif args.reportType == 'CFN-GUARD':            
+    # elif args.reportType == 'CFN-GUARD':
     #     return generate_junit_report_from_cfn_guard()
     else:
-        logger.error(f"Not yet supported report type: {args.reportType}")
+        logger.error("Not yet supported report type: %s", args.reportType)
 
-try:    
-    logger.info("Starting function") 
+try:
+    logger.info("Starting function")
     process_report()
     logger.info("Finished function")
 except Exception as error:
-    logger.error(f"{error}")
+    logger.error("%s", error)
     raise
